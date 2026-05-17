@@ -1,0 +1,1 @@
+-DVERSION=\""Xinu AVR 0.1 RAFA\0"\"
