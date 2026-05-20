@@ -1,5 +1,6 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
+
 #include <xinu.h>
 
 #include "adc.h"
@@ -14,11 +15,11 @@
 #define MIN_PWM  70  /* Mínimo PWM para que gire */
 #define MAX_PWM  255 /* PWM máximo (100%) */
 
-#define RAMP_STEP 1
-#define RAMP_DELAY_MS 2
+#define RAMP_STEP     1 /* Pasos de aceleración del motor */
+#define RAMP_DELAY_MS 2 /* Uso en sleepms() de XINU para la tarea mot1 */
 
 /*-----------------------------------------------------------------------
- * Direcciones para el motor
+ * Direcciones del motor
  *-----------------------------------------------------------------------
  */
 #define DIR_STOP    0
@@ -66,10 +67,9 @@ void enc1_init(void)
     //PORTD |= (1 << PD3);
 
     /*
-     * INT0 flanco ascendente
+     * D2 = PD2 = INT0 flanco ascendente
      */
-    EICRA |= (1 << ISC01);
-    EICRA |= (1 << ISC00);
+    EICRA |= (1 << ISC01) | (1 << ISC00);
     EIMSK |= (1 << INT0);
 
     sei();
