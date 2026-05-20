@@ -172,13 +172,14 @@ configure:
 clean:
 	@echo removing .o files
 	@rm -f ${LD_LIST}
-	@echo   removing configuration files ...
+	@echo removing configuration files ...
 	@rm -f $(CONFH) $(CONFC)
 	@(cd $(TOPDIR)/config; make clean)
 	@echo removing xinu ...
 	@rm -f $(XINU)
 	@rm -f $(XINUBIN)
 	@rm -f $(XINUBOOT)
+	@rm -f $(XINUHEX)
 
 #--------------------------------------------------------------------------------
 # Locations of source directories and exceptions (.c and .[sS] files to exclude)
