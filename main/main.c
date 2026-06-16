@@ -53,9 +53,6 @@ volatile int32_t encoder_count = 0;
  */
 ISR(INT0_vect)
 {
-    /*
-     * Leer B (PD3)
-     */
     if (gpio_pin(ENC1_B, GET)) {
         encoder_count--;
     } else {
@@ -65,19 +62,12 @@ ISR(INT0_vect)
 
 void enc1_init(void)
 {
-    /*
-     * D2 y D3 como entradas
-     */
-    //DDRD &= ~(1 << PD2);
-    //DDRD &= ~(1 << PD3);
     gpio_input(ENC1_A);
     gpio_input(ENC1_B);
 
     /*
      * Pull-ups internas (quitar si el encoder ya tiene pull-up externas)
      */
-    //PORTD |= (1 << PD2);
-    //PORTD |= (1 << PD3);
     //gpio_pin(2, ON);
     //gpio_pin(3, ON);
 
@@ -110,22 +100,16 @@ void set_direction(uint8_t dir)
 {
     switch (dir) {
     case DIR_FORWARD:
-        //PORTD |= (1 << PD7);
-        //PORTB &= ~(1 << PB0);
         gpio_pin(MOT1_A, ON);
         gpio_pin(MOT1_B, OFF);
         break;
 
     case DIR_REVERSE:
-        //PORTD &= ~(1 << PD7);
-        //PORTB |= (1 << PB0);
         gpio_pin(MOT1_A, OFF);
         gpio_pin(MOT1_B, ON);
         break;
 
     default:
-        //PORTD &= ~(1 << PD7);
-        //PORTB &= ~(1 << PB0);
         gpio_pin(MOT1_A, OFF);
         gpio_pin(MOT1_B, OFF);
         break;
@@ -134,11 +118,6 @@ void set_direction(uint8_t dir)
 
 void mot1_init()
 {
-    /*
-     * D7 y D8 como salida
-     */
-    //DDRD |= (1 << PD7);
-    //DDRB |= (1 << PB0);
     gpio_output(MOT1_A);
     gpio_output(MOT1_B);
 }
