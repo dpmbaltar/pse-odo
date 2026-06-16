@@ -9,6 +9,16 @@
 #include "gpio.h"
 
 /*-----------------------------------------------------------------------
+ * Configuración de pines para encoder y motor (XY-160D)
+ *-----------------------------------------------------------------------
+ */
+#define ENC1_A 2
+#define ENC1_B 3
+
+#define MOT1_A 7
+#define MOT1_B 8
+
+/*-----------------------------------------------------------------------
  * Configuración del motor (TT amarillo 6V)
  *-----------------------------------------------------------------------
  */
@@ -46,7 +56,7 @@ ISR(INT0_vect)
     /*
      * Leer B (PD3)
      */
-    if (PIND & (1 << PD3)) {
+    if (gpio_pin(ENC1_B, GET)) {
         encoder_count--;
     } else {
         encoder_count++;
@@ -60,8 +70,8 @@ void enc1_init(void)
      */
     //DDRD &= ~(1 << PD2);
     //DDRD &= ~(1 << PD3);
-    gpio_input(2);
-    gpio_input(3);
+    gpio_input(ENC1_A);
+    gpio_input(ENC1_B);
 
     /*
      * Pull-ups internas (quitar si el encoder ya tiene pull-up externas)
@@ -102,22 +112,22 @@ void set_direction(uint8_t dir)
     case DIR_FORWARD:
         //PORTD |= (1 << PD7);
         //PORTB &= ~(1 << PB0);
-        gpio_pin(7, ON);
-        gpio_pin(8, OFF);
+        gpio_pin(MOT1_A, ON);
+        gpio_pin(MOT1_B, OFF);
         break;
 
     case DIR_REVERSE:
         //PORTD &= ~(1 << PD7);
         //PORTB |= (1 << PB0);
-        gpio_pin(7, OFF);
-        gpio_pin(8, ON);
+        gpio_pin(MOT1_A, OFF);
+        gpio_pin(MOT1_B, ON);
         break;
 
     default:
         //PORTD &= ~(1 << PD7);
         //PORTB &= ~(1 << PB0);
-        gpio_pin(7, OFF);
-        gpio_pin(8, OFF);
+        gpio_pin(MOT1_A, OFF);
+        gpio_pin(MOT1_B, OFF);
         break;
     }
 }
@@ -129,8 +139,8 @@ void mot1_init()
      */
     //DDRD |= (1 << PD7);
     //DDRB |= (1 << PB0);
-    gpio_output(7);
-    gpio_output(8);
+    gpio_output(MOT1_A);
+    gpio_output(MOT1_B);
 }
 
 void mot1(void)
