@@ -6,6 +6,7 @@
 #include "adc.h"
 #include "serial.h"
 #include "timer.h"
+#include "gpio.h"
 
 /*-----------------------------------------------------------------------
  * Configuración del motor (TT amarillo 6V)
@@ -57,14 +58,18 @@ void enc1_init(void)
     /*
      * D2 y D3 como entradas
      */
-    DDRD &= ~(1 << PD2);
-    DDRD &= ~(1 << PD3);
+    //DDRD &= ~(1 << PD2);
+    //DDRD &= ~(1 << PD3);
+    gpio_input(2);
+    gpio_input(3);
 
     /*
      * Pull-ups internas (quitar si el encoder ya tiene pull-up externas)
      */
     //PORTD |= (1 << PD2);
     //PORTD |= (1 << PD3);
+    //gpio_pin(2, ON);
+    //gpio_pin(3, ON);
 
     /*
      * D2 = PD2 = INT0 flanco ascendente
@@ -95,18 +100,24 @@ void set_direction(uint8_t dir)
 {
     switch (dir) {
     case DIR_FORWARD:
-        PORTD |= (1 << PD7);
-        PORTB &= ~(1 << PB0);
+        //PORTD |= (1 << PD7);
+        //PORTB &= ~(1 << PB0);
+        gpio_pin(7, ON);
+        gpio_pin(8, OFF);
         break;
 
     case DIR_REVERSE:
-        PORTD &= ~(1 << PD7);
-        PORTB |= (1 << PB0);
+        //PORTD &= ~(1 << PD7);
+        //PORTB |= (1 << PB0);
+        gpio_pin(7, OFF);
+        gpio_pin(8, ON);
         break;
 
     default:
-        PORTD &= ~(1 << PD7);
-        PORTB &= ~(1 << PB0);
+        //PORTD &= ~(1 << PD7);
+        //PORTB &= ~(1 << PB0);
+        gpio_pin(7, OFF);
+        gpio_pin(8, OFF);
         break;
     }
 }
@@ -116,8 +127,10 @@ void mot1_init()
     /*
      * D7 y D8 como salida
      */
-    DDRD |= (1 << PD7);
-    DDRB |= (1 << PB0);
+    //DDRD |= (1 << PD7);
+    //DDRB |= (1 << PB0);
+    gpio_output(7);
+    gpio_output(8);
 }
 
 void mot1(void)
