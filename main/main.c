@@ -48,6 +48,10 @@
  */
 volatile int32_t encoder_count = 0;
 
+volatile int32_t encoder_pos = 0;
+volatile int32_t gyro_z = 0;
+volatile int16_t battery_state = 0;
+
 /*
  * Interrupción por flanco ascendente en canal A
  */
@@ -82,17 +86,11 @@ void enc1_init(void)
 
 void enc1(void)
 {
-    int32_t pos;
-
     while (1) {
         cli();
-        pos = encoder_count;
+        encoder_pos = encoder_count;
         sei();
-
-        serial_put_str("ENC1: ", 4);
-        serial_put_long_int(pos, 0);
-        serial_put_str("\r\n");
-        sleepms(400);
+        sleepms(100);
     }
 }
 
@@ -206,18 +204,14 @@ void mot1(void)
 void giro(void)
 {
     while (1) {
-        serial_put_str("GIR", 4);
-        serial_put_str("\r\n");
-        sleepms(300);
+        sleepms(200);
     }
 }
 
 void bate(void)
 {
     while (1) {
-        serial_put_str("BAT", 4);
-        serial_put_str("\r\n");
-        sleepms(500);
+        sleepms(300);
     }
 }
 
@@ -231,10 +225,23 @@ void main(void)
     enc1_init();
 
     resume(create(mot1, 128, 20, "mot1", 0));
-    resume(create(enc1, 256, 20, "enc1", 0));
-    //resume(create(bate, 128, 20, "bate", 0));
-    //resume(create(giro, 128, 20, "giro", 0));
+    resume(create(enc1, 128, 20, "enc1", 0));
+    resume(create(bate, 128, 20, "bate", 0));
+    resume(create(giro, 128, 20, "giro", 0));
 
-    for (;;)
-        ;
+    while (1) {
+        serial_put_str("ENC1: ", 4);
+        serial_put_long_int(encoder_pos, 0);
+        serial_put_str("\r\n");
+
+        /*
+        serial_put_str("GYR", 4);
+        serial_put_str("\r\n");
+
+        serial_put_str("BAT", 4);
+        serial_put_str("\r\n");
+        */
+
+        sleepms(500);
+    }
 }
