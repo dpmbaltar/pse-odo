@@ -55,3 +55,12 @@ make clean
 make
 make flash
 ```
+
+Para limpiar completamente y reconfigurar:
+
+```
+make clean defclean depclean
+make configure rebuild
+make
+make flash
+```
