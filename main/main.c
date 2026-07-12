@@ -7,16 +7,27 @@
 #include "serial.h"
 #include "timer.h"
 #include "gpio.h"
+#include "twi.h"
+#include "mpu6050.h"
+#include "hodor.h"
 
 /*-----------------------------------------------------------------------
- * Configuración de pines para encoder y motor (XY-160D)
+ * Configuración de pines para encoders y motores (XY-160D)
  *-----------------------------------------------------------------------
  */
-#define ENC1_A 2
-#define ENC1_B 3
+#define ENC1_A 2 /* PD2/INT0 */
+#define ENC1_B 4 /* PD4 */
 
-#define MOT1_A 7
-#define MOT1_B 8
+#define ENC2_A 3 /* PD3/INT1 */
+#define ENC2_B 5 /* PD5 */
+
+#define MOT1_PWM 9  /* PB1 */
+#define MOT1_A   14 /* PC0/A0 */
+#define MOT1_B   15 /* PC1/A1 */
+
+#define MOT2_PWM 10 /* PB2 */
+#define MOT2_A   16 /* PC2/A2 */
+#define MOT2_B   17 /* PC3/A3 */
 
 /*-----------------------------------------------------------------------
  * Configuración del motor (TT amarillo 6V)
@@ -33,9 +44,11 @@
  * Direcciones del motor
  *-----------------------------------------------------------------------
  */
-#define DIR_STOP    0
-#define DIR_FORWARD 1
-#define DIR_REVERSE 2
+#define DIR_STOP         0
+#define DIR_FORWARD      1
+#define DIR_REVERSE      2
+#define DIR_ROTATE_LEFT  3
+#define DIR_ROTATE_RIGHT 4
 
 /*-----------------------------------------------------------------------
  * Encoder
@@ -43,14 +56,11 @@
  */
 
 /*
- * D2 -> Encoder A -> INT0
- * D3 -> Encoder B
+ * D2 -> Encoder1 A -> INT0
+ * D3 -> Encoder2 A -> INT1
  */
-volatile int32_t encoder_count = 0;
-
-volatile int32_t encoder_pos = 0;
-volatile int32_t gyro_z = 0;
-volatile int16_t battery_state = 0;
+volatile int16_t left_encoder_count = 0;
+volatile int16_t right_encoder_count = 0;
 
 /*
  * Interrupción por flanco ascendente en canal A
@@ -58,9 +68,9 @@ volatile int16_t battery_state = 0;
 ISR(INT0_vect)
 {
     if (gpio_pin(ENC1_B, GET)) {
-        encoder_count--;
+        left_encoder_count--;
     } else {
-        encoder_count++;
+        left_encoder_count++;
     }
 }
 
@@ -86,11 +96,16 @@ void enc1_init(void)
 
 void enc1(void)
 {
+    int16_t left_steps, right_steps;
+
     while (1) {
         cli();
-        encoder_pos = encoder_count;
+        left_steps = left_encoder_count;
+        right_steps = right_encoder_count;
         sei();
-        sleepms(100);
+
+        hodor_state_set_encoders(left_steps, right_steps);
+        sleepms(100);//probar cada 10-20ms
     }
 }
 
@@ -100,27 +115,49 @@ void set_direction(uint8_t dir)
     case DIR_FORWARD:
         gpio_pin(MOT1_A, ON);
         gpio_pin(MOT1_B, OFF);
+        gpio_pin(MOT2_A, ON);
+        gpio_pin(MOT2_B, OFF);
         break;
 
     case DIR_REVERSE:
         gpio_pin(MOT1_A, OFF);
         gpio_pin(MOT1_B, ON);
+        gpio_pin(MOT2_A, OFF);
+        gpio_pin(MOT2_B, ON);
+        break;
+
+    case DIR_ROTATE_LEFT:
+        gpio_pin(MOT1_A, ON);
+        gpio_pin(MOT1_B, OFF);
+        gpio_pin(MOT2_A, OFF);
+        gpio_pin(MOT2_B, ON);
+        break;
+
+    case DIR_ROTATE_RIGHT:
+        gpio_pin(MOT1_A, OFF);
+        gpio_pin(MOT1_B, ON);
+        gpio_pin(MOT2_A, ON);
+        gpio_pin(MOT2_B, OFF);
         break;
 
     default:
         gpio_pin(MOT1_A, OFF);
         gpio_pin(MOT1_B, OFF);
+        gpio_pin(MOT2_A, OFF);
+        gpio_pin(MOT2_B, OFF);
         break;
     }
 }
 
-void mot1_init()
+void motors_init()
 {
     gpio_output(MOT1_A);
     gpio_output(MOT1_B);
+    gpio_output(MOT2_A);
+    gpio_output(MOT2_B);
 }
 
-void mot1(void)
+void motors(void)
 {
     uint16_t adc_value;
     int16_t error;
@@ -131,7 +168,7 @@ void mot1(void)
     uint32_t temp;
 
     while (1) {
-        adc_value = adc_read(PC0);
+        adc_value = adc_read(ADC7);
         error = (int16_t)adc_value - 512;
 
         /*
@@ -145,9 +182,9 @@ void mot1(void)
              * Determinar dirección
              */
             if (error > 0) {
-                target_dir = DIR_FORWARD;
+                target_dir = DIR_ROTATE_LEFT;
             } else {
-                target_dir = DIR_REVERSE;
+                target_dir = DIR_ROTATE_RIGHT;
                 error = -error;
             }
 
@@ -201,17 +238,27 @@ void mot1(void)
     }
 }
 
-void giro(void)
+/**
+ * Tarea de lectura de datos del giróscopo mediante I2C.
+ *
+ * D18/A4/PC4 (SDA)
+ * D19/A5/PC5 (SCL)
+ */
+void gyro(void)
 {
+    mpu6050_data_t imu;
+
     while (1) {
-        sleepms(200);
+        mpu6050_read(&imu);
+        hodor_state_set_gyro(imu.gx, imu.gy, imu.gz);
+        sleepms(10);
     }
 }
 
 void bate(void)
 {
     while (1) {
-        sleepms(300);
+        sleepms(1000);
     }
 }
 
@@ -220,27 +267,20 @@ void main(void)
     adc_init();
     serial_init();
     timer1_init(0);
+    //twi_init();
+    //mpu6050_init();
+    hodor_init();
 
-    mot1_init();
+    motors_init();
     enc1_init();
 
-    resume(create(mot1, 128, 20, "mot1", 0));
+    resume(create(motors, 128, 20, "motors", 0));
     resume(create(enc1, 128, 20, "enc1", 0));
-    resume(create(bate, 128, 20, "bate", 0));
-    resume(create(giro, 128, 20, "giro", 0));
+    //resume(create(bate, 128, 20, "bate", 0));
+    //resume(create(gyro, 128, 20, "gyro", 0));
 
     while (1) {
-        serial_put_str("ENC1: ", 4);
-        serial_put_long_int(encoder_pos, 0);
-        serial_put_str("\r\n");
-
-        /*
-        serial_put_str("GYR", 4);
-        serial_put_str("\r\n");
-
-        serial_put_str("BAT", 4);
-        serial_put_str("\r\n");
-        */
+        //hodor_state_send();
 
         sleepms(500);
     }
