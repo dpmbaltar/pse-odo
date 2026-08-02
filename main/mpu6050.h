@@ -23,4 +23,3 @@ void mpu6050_init(void);
 void mpu6050_read(mpu6050_data_t *data);
 
 #endif
-

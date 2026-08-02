@@ -138,4 +138,3 @@ uint8_t twi_read_nack(void)
 
     return twi->twdr;
 }
-

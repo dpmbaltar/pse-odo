@@ -11,4 +11,3 @@ uint8_t twi_read_ack(void);
 uint8_t twi_read_nack(void);
 
 #endif
-

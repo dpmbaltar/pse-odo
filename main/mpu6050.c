@@ -48,4 +48,3 @@ void mpu6050_read(mpu6050_data_t *data)
     data->gy = (raw[10] << 8) | raw[11];
     data->gz = (raw[12] << 8) | raw[13];
 }
-
