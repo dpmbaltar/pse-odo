@@ -104,7 +104,8 @@ void enc1(void)
         right_steps = right_encoder_count;
         sei();
 
-        hodor_st_set_encoders(left_steps, right_steps);
+        hodor_st_set(LENC_STEPS, left_steps);
+        hodor_st_set(RENC_STEPS, right_steps);
         sleepms(100);//probar cada 10-20ms
     }
 }
@@ -250,7 +251,7 @@ void gyro(void)
 
     while (1) {
         mpu6050_read(&imu);
-        hodor_st_set_gyro(imu.gz);
+        hodor_st_set(GYRO_Z, imu.gz);
         sleepms(10);
     }
 }
@@ -279,7 +280,28 @@ void main(void)
     //resume(create(bate, 128, 20, "bate", 0));
     //resume(create(gyro, 128, 20, "gyro", 0));
 
+    int16_t lpwm, rpwm;
+    hodor_msg_t msg = MSG_INIT;
+
     while (1) {
+        hodor_st_get(LMOTOR_PWM, &lpwm);
+        msg.head = MSG_HEAD(OP_WRITE, LMOTOR_PWM);
+        msg.lmotor_pwm = lpwm;
+        hodor_msg_send(&msg);
+
+        hodor_st_get(RMOTOR_PWM, &rpwm);
+        msg.head = MSG_HEAD(OP_WRITE, RMOTOR_PWM);
+        msg.rmotor_pwm = rpwm;
+        hodor_msg_send(&msg);
+
+        if (lpwm >= 200 || rpwm <= -200) {
+            hodor_st_set(LMOTOR_PWM, 100);
+            hodor_st_set(RMOTOR_PWM, -100);
+        } else {
+            hodor_st_set(LMOTOR_PWM, lpwm + 2);
+            hodor_st_set(RMOTOR_PWM, rpwm - 2);
+        }
+
         sleepms(500);
     }
 }
