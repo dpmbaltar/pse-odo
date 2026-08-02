@@ -1,7 +1,10 @@
 #include "hodor.h"
+#include "serial.h"
 
-hodor_state_t hodor_state = HODOR_STATE_INIT;
-sid32 hodor_sem;
+#define HODOR_ST_INIT {0, 0, 0, 0, 0, 0, 0, 0}
+
+hodor_st_t st = HODOR_ST_INIT;
+sid32 sem;
 
 static uint8_t checksum8(const uint8_t *data, uint8_t len)
 {
@@ -15,24 +18,23 @@ static uint8_t checksum8(const uint8_t *data, uint8_t len)
 
 void hodor_init(void)
 {
-    hodor_sem = semcreate(1);
+    sem = semcreate(1);
 }
 
-void hodor_state_send()
+void hodor_st_send()
 {
-    hodor_state_t data;
+    hodor_st_t data = {.sof = SOF_SEND};
     uint8_t *buffer = (uint8_t *)&data;
-    size_t size = sizeof(hodor_state_t);
+    size_t size = sizeof(hodor_st_t);
 
-    wait(hodor_sem);
-    data.sof = hodor_state.sof;
-    data.l_encoder_steps = hodor_state.l_encoder_steps;
-    data.r_encoder_steps = hodor_state.r_encoder_steps;
-    data.battery_mv = hodor_state.battery_mv;
-    //data.gyro_x = hodor_state.gyro_x;
-    //data.gyro_y = hodor_state.gyro_y;
-    data.gyro_z = hodor_state.gyro_z; //enviar cada 100hz
-    signal(hodor_sem);
+    wait(sem);
+    data.l_encoder_steps = st.l_encoder_steps;
+    data.r_encoder_steps = st.r_encoder_steps;
+    data.l_motor_pwm = st.l_motor_pwm;
+    data.r_motor_pwm = st.r_motor_pwm;
+    data.battery_mv = st.battery_mv;
+    data.gyro_z = st.gyro_z;
+    signal(sem);
 
     data.checksum = checksum8(buffer, size - 1);
 
@@ -41,23 +43,56 @@ void hodor_state_send()
     }
 }
 
-void hodor_state_set_encoders(int16_t left_steps, int16_t right_steps)
+void hodor_st_set_encoders(int16_t left_steps, int16_t right_steps)
 {
-    wait(hodor_sem);
-
-    hodor_state.l_encoder_steps = left_steps;
-    hodor_state.r_encoder_steps = right_steps;
-
-    signal(hodor_sem);
+    wait(sem);
+    st.l_encoder_steps = left_steps;
+    st.r_encoder_steps = right_steps;
+    signal(sem);
 }
 
-void hodor_state_set_gyro(int16_t gx, int16_t gy, int16_t gz)
+void hodor_st_set_gyro(int16_t gz)
 {
-    wait(hodor_sem);
+    wait(sem);
+    st.gyro_z = gz;
+    signal(sem);
+}
 
-    //hodor_state.gyro_x = gx;
-    //hodor_state.gyro_y = gy;
-    hodor_state.gyro_z = gz;
+void hodor_msg_send(hodor_msg_t *msg)
+{
+    uint8_t *buffer = (uint8_t *)msg;
+    size_t size = sizeof(hodor_msg_t);
 
-    signal(hodor_sem);
+    msg->sof = SOF_SEND;
+    msg->checksum = checksum8((uint8_t *)msg, sizeof(hodor_msg_t) - 1);
+
+    for (int i = 0; i < size; i++) {
+        serial_put_char(buffer[i]);
+    }
+}
+
+void hodor_msg_recv(hodor_msg_t *msg)
+{
+    msg->sof = serial_get_char();
+    if (msg->sof != SOF_RECV) {
+        msg->head = 0;
+        msg->body = 0;
+        msg->checksum = 0;
+        return;
+    }
+
+    size_t size = sizeof(hodor_msg_t);
+    uint8_t *buffer = (uint8_t *)msg;
+    uint8_t received = 1;
+    while (received < size) {
+        buffer[received] = serial_get_char();
+        received++;
+    }
+
+    uint8_t chks = checksum8((uint8_t *)msg, sizeof(hodor_msg_t) - 1);
+    if (chks != msg->checksum) {
+        msg->head = 0;
+        msg->body = 0;
+        msg->checksum = 0;
+    }
 }

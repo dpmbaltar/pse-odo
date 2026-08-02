@@ -82,8 +82,8 @@ void enc1_init(void)
     /*
      * Pull-ups internas (quitar si el encoder ya tiene pull-up externas)
      */
-    //gpio_pin(2, ON);
-    //gpio_pin(3, ON);
+    gpio_pin(2, ON);
+    gpio_pin(3, ON);
 
     /*
      * D2 = PD2 = INT0 flanco ascendente
@@ -104,7 +104,7 @@ void enc1(void)
         right_steps = right_encoder_count;
         sei();
 
-        hodor_state_set_encoders(left_steps, right_steps);
+        hodor_st_set_encoders(left_steps, right_steps);
         sleepms(100);//probar cada 10-20ms
     }
 }
@@ -250,7 +250,7 @@ void gyro(void)
 
     while (1) {
         mpu6050_read(&imu);
-        hodor_state_set_gyro(imu.gx, imu.gy, imu.gz);
+        hodor_st_set_gyro(imu.gz);
         sleepms(10);
     }
 }
@@ -280,8 +280,6 @@ void main(void)
     //resume(create(gyro, 128, 20, "gyro", 0));
 
     while (1) {
-        //hodor_state_send();
-
         sleepms(500);
     }
 }
