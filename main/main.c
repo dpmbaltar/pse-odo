@@ -74,27 +74,41 @@ ISR(INT0_vect)
     }
 }
 
-void enc1_init(void)
+ISR(INT1_vect)
+{
+    if (gpio_pin(ENC2_B, GET)) {
+        right_encoder_count--;
+    } else {
+        right_encoder_count++;
+    }
+}
+
+void encoders_init(void)
 {
     gpio_input(ENC1_A);
     gpio_input(ENC1_B);
+    gpio_input(ENC2_A);
+    gpio_input(ENC2_B);
 
     /*
      * Pull-ups internas (quitar si el encoder ya tiene pull-up externas)
      */
-    gpio_pin(2, ON);
-    gpio_pin(3, ON);
+    gpio_pin(ENC1_A, ON);
+    gpio_pin(ENC1_B, ON);
+    gpio_pin(ENC2_A, ON);
+    gpio_pin(ENC2_B, ON);
 
-    /*
+    /**
      * D2 = PD2 = INT0 flanco ascendente
+     * D3 = PD3 = INT1 flanco ascendente
      */
-    EICRA |= (1 << ISC01) | (1 << ISC00);
-    EIMSK |= (1 << INT0);
+    EICRA |= (1 << ISC01) | (1 << ISC00) | (1 << ISC11) | (1 << ISC10);
+    EIMSK |= (1 << INT0) | (1 << INT1);
 
     sei();
 }
 
-void enc1(void)
+void encoders(void)
 {
     int16_t left_steps, right_steps;
 
@@ -106,7 +120,7 @@ void enc1(void)
 
         hodor_st_set(LENC_STEPS, left_steps);
         hodor_st_set(RENC_STEPS, right_steps);
-        sleepms(100);//probar cada 10-20ms
+        sleepms(20);//probar cada 10-20ms
     }
 }
 
@@ -258,7 +272,11 @@ void gyro(void)
 
 void bate(void)
 {
+    int16_t battery_mv = 0;
+
     while (1) {
+        battery_mv = adc_read(ADC6);
+        hodor_set(BATTERY_MV, battery_mv);
         sleepms(1000);
     }
 }
@@ -271,19 +289,22 @@ void main(void)
     //twi_init();
     //mpu6050_init();
     hodor_init();
-
     motors_init();
-    enc1_init();
+    encoders_init();
 
     resume(create(motors, 128, 20, "motors", 0));
-    resume(create(enc1, 128, 20, "enc1", 0));
-    //resume(create(bate, 128, 20, "bate", 0));
+    resume(create(encoders, 128, 20, "encoders", 0));
+    //resume(create(bate, 64, 20, "bate", 0));
     //resume(create(gyro, 128, 20, "gyro", 0));
 
+    /*
     int16_t lpwm, rpwm;
+    int16_t lsteps, rsteps;
     hodor_msg_t msg = MSG_INIT;
+    */
 
     while (1) {
+        /*
         hodor_st_get(LMOTOR_PWM, &lpwm);
         msg.head = MSG_HEAD(OP_WRITE, LMOTOR_PWM);
         msg.lmotor_pwm = lpwm;
@@ -293,14 +314,7 @@ void main(void)
         msg.head = MSG_HEAD(OP_WRITE, RMOTOR_PWM);
         msg.rmotor_pwm = rpwm;
         hodor_msg_send(&msg);
-
-        if (lpwm >= 200 || rpwm <= -200) {
-            hodor_st_set(LMOTOR_PWM, 100);
-            hodor_st_set(RMOTOR_PWM, -100);
-        } else {
-            hodor_st_set(LMOTOR_PWM, lpwm + 2);
-            hodor_st_set(RMOTOR_PWM, rpwm - 2);
-        }
+        */
 
         sleepms(500);
     }
