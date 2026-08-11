@@ -270,13 +270,13 @@ void gyro(void)
     }
 }
 
-void bate(void)
+void battery(void)
 {
     int16_t battery_mv = 0;
 
     while (1) {
         battery_mv = adc_read(ADC6);
-        hodor_set(BATTERY_MV, battery_mv);
+        hodor_st_set(BATTERY_MV, battery_mv);
         sleepms(1000);
     }
 }
@@ -286,24 +286,38 @@ void main(void)
     adc_init();
     serial_init();
     timer1_init(0);
-    //twi_init();
-    //mpu6050_init();
+    twi_init();
+    mpu6050_init();
     hodor_init();
     motors_init();
     encoders_init();
 
     resume(create(motors, 128, 20, "motors", 0));
     resume(create(encoders, 128, 20, "encoders", 0));
-    //resume(create(bate, 64, 20, "bate", 0));
-    //resume(create(gyro, 128, 20, "gyro", 0));
+    //resume(create(battery, 64, 20, "battery", 0));
+    resume(create(gyro, 192, 20, "gyro", 0));
 
-    /*
-    int16_t lpwm, rpwm;
+
+    //int16_t lpwm, rpwm;
     int16_t lsteps, rsteps;
+    int16_t gyro_z;
+    /*
     hodor_msg_t msg = MSG_INIT;
     */
 
     while (1) {
+        hodor_st_get(LENC_STEPS, &lsteps);
+        hodor_st_get(RENC_STEPS, &rsteps);
+        hodor_st_get(GYRO_Z, &gyro_z);
+
+        serial_put_str("LENC=");
+        serial_put_int(lsteps, 0);
+        serial_put_str("|RENC=");
+        serial_put_int(rsteps, 0);
+        serial_put_str("|GYRO_Z=");
+        serial_put_int(gyro_z, 0);
+        serial_put_str("\r\n");
+
         /*
         hodor_st_get(LMOTOR_PWM, &lpwm);
         msg.head = MSG_HEAD(OP_WRITE, LMOTOR_PWM);
