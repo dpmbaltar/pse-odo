@@ -12,43 +12,44 @@
 #include "hodor.h"
 
 /*-----------------------------------------------------------------------
- * Configuración de pines para encoders y motores (XY-160D)
+ * Configuración de pines
  *-----------------------------------------------------------------------
  */
-#define ENC1_A 2 /* PD2/INT0 */
-#define ENC1_B 4 /* PD4 */
-
-#define ENC2_A 3 /* PD3/INT1 */
-#define ENC2_B 5 /* PD5 */
-
+#define ENC1_A   2  /* PD2/INT0 */
+#define ENC2_A   3  /* PD3/INT1 */
+#define ENC1_B   4  /* PD4 */
+#define ENC2_B   5  /* PD5 */
 #define MOT1_PWM 9  /* PB1 */
+#define MOT2_PWM 10 /* PB2 */
 #define MOT1_A   14 /* PC0/A0 */
 #define MOT1_B   15 /* PC1/A1 */
-
-#define MOT2_PWM 10 /* PB2 */
 #define MOT2_A   16 /* PC2/A2 */
 #define MOT2_B   17 /* PC3/A3 */
 
 /*-----------------------------------------------------------------------
- * Configuración del motor (TT amarillo 6V)
+ * Configuración general
  *-----------------------------------------------------------------------
  */
-#define DEADZONE 40  /* Zona muerta del motor */
-#define MIN_PWM  70  /* Mínimo PWM para que gire */
-#define MAX_PWM  255 /* PWM máximo (100%) */
+#define PWM_MIN       70   /* PWM mínimo para el motor */
+#define PWM_MAX       255  /* PWM máximo (100%) */
+#define ROTATION_TOL  2    /* Tolerancia de rotación */
+#define ENCODER_CPR   600L /* Pasos por vuelta del encoder */
+#define WHEEL_DIAM_MM 60L  /* Díametro de ruedas (mm) */
+#define WHEEL_BASE_MM 135L /* Distancia entre centros de las ruedas (mm) */
 
-#define RAMP_STEP     1 /* Pasos de aceleración del motor */
-#define RAMP_DELAY_MS 2 /* Uso en sleepms() de XINU para la tarea mot1 */
+#define DEADZONE      40   /* Zona muerta del motor (TT amarillo 6V) */
+#define RAMP_STEP     1    /* Pasos de aceleración del motor */
+#define RAMP_DELAY_MS 2    /* Uso en sleepms() de XINU para la tarea mot1 */
 
 /*-----------------------------------------------------------------------
  * Direcciones del motor
  *-----------------------------------------------------------------------
  */
-#define DIR_STOP         0
-#define DIR_FORWARD      1
-#define DIR_REVERSE      2
-#define DIR_ROTATE_LEFT  3
-#define DIR_ROTATE_RIGHT 4
+#define DIR_STOP         0 /* Parar/Reposo */
+#define DIR_FORWARD      1 /* Adelante */
+#define DIR_REVERSE      2 /* Reversa */
+#define DIR_ROTATE_LEFT  3 /* Rotar a la izquierda */
+#define DIR_ROTATE_RIGHT 4 /* Rotar a la derecha */
 
 /*-----------------------------------------------------------------------
  * Encoder
@@ -62,9 +63,6 @@
 volatile int16_t left_encoder_count = 0;
 volatile int16_t right_encoder_count = 0;
 
-/*
- * Interrupción por flanco ascendente en canal A
- */
 ISR(INT0_vect)
 {
     if (gpio_pin(ENC1_B, GET)) {
@@ -99,8 +97,8 @@ void encoders_init(void)
     gpio_pin(ENC2_B, ON);
 
     /**
-     * D2 = PD2 = INT0 flanco ascendente
-     * D3 = PD3 = INT1 flanco ascendente
+     * D2 = PD2 = INT0 / flanco ascendente
+     * D3 = PD3 = INT1 / flanco ascendente
      */
     EICRA |= (1 << ISC01) | (1 << ISC00) | (1 << ISC11) | (1 << ISC10);
     EIMSK |= (1 << INT0) | (1 << INT1);
@@ -108,7 +106,7 @@ void encoders_init(void)
     sei();
 }
 
-void encoders(void)
+void encoders_task(void)
 {
     int16_t left_steps, right_steps;
 
@@ -124,7 +122,7 @@ void encoders(void)
     }
 }
 
-void set_direction(uint8_t dir)
+static void set_direction(uint8_t dir)
 {
     switch (dir) {
     case DIR_FORWARD:
@@ -164,6 +162,34 @@ void set_direction(uint8_t dir)
     }
 }
 
+/*
+ * Sea D el díametro de las ruedas, B la distancia entre los centros:
+ *
+ *               angle * CPR * B
+ * diferencial = ---------------
+ *                   180 * D
+ *
+ * El diámetro de rueda se cancela en la ecuación si estamos usando
+ * desplazamiento de arco de las ruedas? No: para el ángulo del chasis
+ * necesitamos la relación B/R, por lo que en realidad:
+ *
+ *               angle * CPR * B
+ * diferencial = ----------------
+ *                   360 * r
+ *
+ * donde r = D/2
+ */
+static int16_t angle_to_encoder_delta(int16_t angle)
+{
+    int32_t numerator;
+    int32_t denominator;
+
+    numerator = (int32_t)angle * ENCODER_CPR * WHEEL_BASE_MM;
+    denominator = 180L * WHEEL_DIAM_MM;
+
+    return (int16_t)(numerator / denominator);
+}
+
 void motors_init()
 {
     gpio_output(MOT1_A);
@@ -172,7 +198,7 @@ void motors_init()
     gpio_output(MOT2_B);
 }
 
-void motors(void)
+void motors_task(void)
 {
     uint16_t adc_value;
     int16_t error;
@@ -205,14 +231,14 @@ void motors(void)
 
             /*
              * Mapear:
-             * DEADZONE..511 -> MIN_PWM..255
+             * DEADZONE..511 -> PWM_MIN..255
              */
-            temp = (uint32_t)(error - DEADZONE) * (MAX_PWM - MIN_PWM);
+            temp = (uint32_t)(error - DEADZONE) * (PWM_MAX - PWM_MIN);
             temp /= (511 - DEADZONE);
-            target_pwm = MIN_PWM + temp;
+            target_pwm = PWM_MIN + temp;
 
-            if (target_pwm > MAX_PWM)
-                target_pwm = MAX_PWM;
+            if (target_pwm > PWM_MAX)
+                target_pwm = PWM_MAX;
         }
 
         /*
@@ -259,7 +285,7 @@ void motors(void)
  * D18/A4/PC4 (SDA)
  * D19/A5/PC5 (SCL)
  */
-void gyro(void)
+void gyro_task(void)
 {
     mpu6050_data_t imu;
 
@@ -270,7 +296,7 @@ void gyro(void)
     }
 }
 
-void battery(void)
+void battery_task(void)
 {
     int16_t battery_mv = 0;
 
@@ -292,11 +318,10 @@ void main(void)
     motors_init();
     encoders_init();
 
-    resume(create(motors, 128, 20, "motors", 0));
-    resume(create(encoders, 128, 20, "encoders", 0));
+    resume(create(motors_task, 128, 20, "motors", 0));
+    resume(create(encoders_task, 128, 20, "encoders", 0));
     //resume(create(battery, 64, 20, "battery", 0));
-    resume(create(gyro, 192, 20, "gyro", 0));
-
+    resume(create(gyro_task, 192, 20, "gyro", 0));
 
     //int16_t lpwm, rpwm;
     int16_t lsteps, rsteps;
