@@ -11,7 +11,8 @@
 
 #include <stdint.h>
 
-void timer1_init(uint16_t top_value);
-void timer1_pulse(uint16_t width);
+void timer1_init(void);
+void timer1_set_pwm_A(uint8_t width);
+void timer1_set_pwm_B(uint8_t width);
 
 #endif /* _TIMER_H_ */

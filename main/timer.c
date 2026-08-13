@@ -67,20 +67,24 @@ typedef struct
 //static volatile timer0_t* timer0 = (volatile timer0_t*)(0x44);
 static volatile timer1_t* timer1 = (volatile timer1_t*)(0x80);
 
-void timer1_init(uint16_t top_value)
+void timer1_init(void)
 {
-    /* D9 = PB1 = OC1A */
-    DDRB |= (1 << PB1) | (1 << PB2); // Establecer OC1A (PB1) como salida
+    /* Configurar pines OC1A (PB1 / D9) y OC1B (PB2 / D10) como salidas */
+    DDRB |= (1 << PB1) | (1 << PB2);
 
     timer1->tccr1a |= (1 << WGM10) | (1 << COM1A1) | (1 << COM1B1);
     timer1->tccr1b |= (1 << WGM12) | (1 << CS10);
-    //timer1->icr1 = top_value; // Establecer el tope
+
     timer1->ocr1a = 0;
     timer1->ocr1b = 0;
 }
 
-void timer1_pulse(uint16_t width)
+void timer1_set_pwm_A(uint8_t width)
 {
     timer1->ocr1a = width;
+}
+
+void timer1_set_pwm_B(uint8_t width)
+{
     timer1->ocr1b = width;
 }
