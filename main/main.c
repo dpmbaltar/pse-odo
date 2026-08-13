@@ -10,6 +10,7 @@
 #include "twi.h"
 #include "mpu6050.h"
 #include "hodor.h"
+#include "pid.h"
 
 /*-----------------------------------------------------------------------
  * Configuración de pines
@@ -198,7 +199,75 @@ void motors_init()
     gpio_output(MOT2_B);
 }
 
+int16_t rotation_target = 90;
+
 void motors_task(void)
+{
+    int16_t target;
+    int16_t current;
+    int16_t control;
+
+    int16_t left_start;
+    int16_t right_start;
+
+    int16_t left;
+    int16_t right;
+
+    pid_t pid;
+
+    pid_init(
+        &pid,
+        384,  /* Kp = 1.5 */
+        8,    /* Ki = 0.03125 */
+        128,  /* Kd = 0.5 */
+        1000,
+        100
+    );
+
+    hodor_st_get(LENC_STEPS, &left_start);
+    hodor_st_get(LENC_STEPS, &right_start);
+    target = angle_to_encoder_delta(rotation_target);
+
+    while (1) {
+        hodor_st_get(LENC_STEPS, &left);
+        hodor_st_get(LENC_STEPS, &right);
+        left  -= left_start;
+        right -= right_start;
+        current = right - left;
+
+        /*
+         * PID sobre el error angular.
+         */
+        control = pid_update(&pid, target, current);
+
+        /*
+         * Giro diferencial.
+         */
+        if (rotation_target < 0) {
+            set_direction(DIR_ROTATE_LEFT);
+        } else if (rotation_target > 0) {
+            set_direction(DIR_ROTATE_RIGHT);
+        } else {
+            set_direction(DIR_STOP);
+        }
+
+        if (abs(target - current) <= ROTATION_TOL) {
+            timer1_set_pwm_A(0);
+            timer1_set_pwm_B(0);
+            hodor_st_set(LMOTOR_TPWM, 0);
+            hodor_st_set(RMOTOR_TPWM, 0);
+        } else {
+            timer1_set_pwm_A(PWM_MIN - control);
+            timer1_set_pwm_B(PWM_MIN + control);
+            hodor_st_set(LMOTOR_TPWM, PWM_MIN - control);
+            hodor_st_set(RMOTOR_TPWM, PWM_MIN + control);
+        }
+
+        sleepms(20);
+    }
+}
+
+void motors_task1(void)
 {
     uint16_t adc_value;
     int16_t error;
@@ -274,7 +343,8 @@ void motors_task(void)
             }
         }
 
-        timer1_pulse(current_pwm);
+        timer1_set_pwm_A(current_pwm);
+        timer1_set_pwm_B(current_pwm);
         sleepms(RAMP_DELAY_MS);
     }
 }
@@ -311,7 +381,7 @@ void main(void)
 {
     adc_init();
     serial_init();
-    timer1_init(0);
+    timer1_init();
     twi_init();
     mpu6050_init();
     hodor_init();
@@ -323,7 +393,7 @@ void main(void)
     //resume(create(battery, 64, 20, "battery", 0));
     resume(create(gyro_task, 192, 20, "gyro", 0));
 
-    //int16_t lpwm, rpwm;
+    int16_t ltpwm, rtpwm;
     int16_t lsteps, rsteps;
     int16_t gyro_z;
     /*
@@ -333,12 +403,18 @@ void main(void)
     while (1) {
         hodor_st_get(LENC_STEPS, &lsteps);
         hodor_st_get(RENC_STEPS, &rsteps);
+        hodor_st_get(LMOTOR_TPWM, &ltpwm);
+        hodor_st_get(RMOTOR_TPWM, &rtpwm);
         hodor_st_get(GYRO_Z, &gyro_z);
 
         serial_put_str("LENC=");
         serial_put_int(lsteps, 0);
         serial_put_str("|RENC=");
         serial_put_int(rsteps, 0);
+        serial_put_str("|LTPWM=");
+        serial_put_int(ltpwm, 0);
+        serial_put_str("|RTPWM=");
+        serial_put_int(rtpwm, 0);
         serial_put_str("|GYRO_Z=");
         serial_put_int(gyro_z, 0);
         serial_put_str("\r\n");
