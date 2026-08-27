@@ -198,8 +198,24 @@ void motors_init()
     gpio_output(MOT2_B);
 }
 
-void motor_task(void)
+void motor_task(uint8_t motor_n)
 {
+    volatile int16_t *encoder_count;
+    hodor_ad_t motor_pwm_addr;
+    hodor_ad_t motor_tpwm_addr;
+    void (*motor_pwm_set)(uint8_t);
+    if (motor_n == 1) {
+        encoder_count = &left_encoder_count;
+        motor_pwm_addr = LMOTOR_PWM;
+        motor_tpwm_addr = LMOTOR_TPWM;
+        motor_pwm_set = timer1_set_pwm_A;
+    } else {
+        encoder_count = &right_encoder_count;
+        motor_pwm_addr = RMOTOR_PWM;
+        motor_tpwm_addr = RMOTOR_TPWM;
+        motor_pwm_set = timer1_set_pwm_B;
+    }
+
     pid_t pid;
 
     int16_t target_speed;
@@ -217,25 +233,17 @@ void motor_task(void)
              PID_MOTOR_LIMIT);
 
     cli();
-    previous_encoder = left_encoder_count;
+    previous_encoder = *encoder_count;
     sei();
 
     set_direction(DIR_STOP);
-    timer1_set_pwm_A(0);
+    motor_pwm_set(0);
 
     while (1) {
-        /*
-         * ---------------------------------------------------------
-         * 1. Obtener velocidad objetivo
-         * ---------------------------------------------------------
-         *
-         * LMOTOR_TPWM ya no representa directamente un PWM.
-         * Representa pasos de encoder por período de control.
-         */
-        hodor_st_get(LMOTOR_TPWM, &target_speed);
+        hodor_st_get(motor_tpwm_addr, &target_speed);
 
         cli();
-        current_encoder = left_encoder_count;
+        current_encoder = *encoder_count;
         sei();
 
         /*
@@ -260,7 +268,7 @@ void motor_task(void)
             target_pwm = 0;
 
             set_direction(DIR_STOP);
-            timer1_set_pwm_A(0);
+            motor_pwm_set(0);
         } else {
             target_pwm = pid_update(
                 &pid,
@@ -286,10 +294,10 @@ void motor_task(void)
                 target_pwm = PWM_MAX;
             }
 
-            timer1_set_pwm_A((uint8_t)target_pwm);
+            motor_pwm_set((uint8_t)target_pwm);
         }
 
-        hodor_st_set(LMOTOR_PWM, target_pwm);
+        hodor_st_set(motor_pwm_addr, target_pwm);
         sleepms(PID_PERIOD_MS);
     }
 }
@@ -338,7 +346,7 @@ void main(void)
     // la estructura y el paso de mensajes
     // probar con 2 valores uno bajo y otro alto
     resume(create(motor_task, 128, 20, "motor1", 1, 1));
-    //resume(create(motor_task, 128, 20, "motor2", 1, 1));
+    //resume(create(motor_task, 128, 20, "motor2", 1, 2));
     //resume(create(battery, 64, 20, "battery", 0));
     //resume(create(gyro_task, 192, 20, "gyro", 0));
 
