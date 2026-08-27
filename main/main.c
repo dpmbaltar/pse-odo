@@ -123,22 +123,6 @@ void encoders_init(void)
     sei();
 }
 
-void encoders_task(void)
-{
-    int16_t left_steps, right_steps;
-
-    while (1) {
-        cli();
-        left_steps = left_encoder_count;
-        right_steps = right_encoder_count;
-        sei();
-
-        hodor_st_set(LENC_STEPS, left_steps);
-        hodor_st_set(RENC_STEPS, right_steps);
-        sleepms(20);//probar cada 10-20ms
-    }
-}
-
 static void set_direction(uint8_t dir)
 {
     switch (dir) {
@@ -313,76 +297,6 @@ void motor_task(void)
     }
 }
 
-void motor_task1(void)
-{
-    int16_t target_pwm = 0;
-    uint8_t current_pwm = 0;
-    uint8_t target_dir = DIR_STOP;
-    uint8_t current_dir = DIR_STOP;
-
-    while (1) {
-        hodor_st_get(LMOTOR_TPWM, &target_pwm);
-
-        /*
-         * Zona muerta
-         */
-        if (target_pwm > -DEADZONE && target_pwm < DEADZONE) {
-            target_pwm = 0;
-            target_dir = DIR_STOP;
-        } else {
-            /*
-             * Determinar dirección
-             */
-            if (target_pwm > 0) {
-                target_dir = DIR_ROTATE_LEFT;
-            } else {
-                target_dir = DIR_ROTATE_RIGHT;
-                target_pwm = -target_pwm;
-            }
-
-            if (target_pwm > PWM_MAX)
-                target_pwm = PWM_MAX;
-        }
-
-        /*
-         * Cambio de dirección seguro
-         */
-        if (current_dir != target_dir) {
-            /*
-             * Frenar antes de cambiar de dirección
-             */
-            if (current_pwm > 0) {
-                current_pwm -= RAMP_STEP;
-
-                if (current_pwm > PWM_MAX)
-                    current_pwm = 0;
-            } else {
-                current_dir = target_dir;
-                set_direction(current_dir);
-            }
-        } else {
-            /*
-             * Rampa de aceleración normal
-             */
-            if (current_pwm < target_pwm) {
-                current_pwm += RAMP_STEP;
-
-                if (current_pwm > target_pwm)
-                    current_pwm = target_pwm;
-            } else if (current_pwm > target_pwm) {
-                current_pwm -= RAMP_STEP;
-
-                if (current_pwm < target_pwm)
-                    current_pwm = target_pwm;
-            }
-        }
-
-        timer1_set_pwm_A(current_pwm);
-        timer1_set_pwm_B(current_pwm);
-        sleepms(RAMP_DELAY_MS);
-    }
-}
-
 /**
  * Tarea de lectura de datos del giróscopo mediante I2C.
  *
@@ -422,12 +336,12 @@ void main(void)
     motors_init();
     encoders_init();
 
-    resume(create(motor_task, 128, 20, "motors", 1, 1));
-    //resume(create(encoders_task, 128, 20, "encoders", 0));
-    //Quitar la tarea encoder, y utilizar la misma tarea de motors_taks
-    //con distintos parametros, enviar las velocidades desde linux y probar
-    //la estructura y el paso de mensajes
-    //probar con 2 valores uno bajo y otro alto
+    // Quitar la tarea encoder, y utilizar la misma tarea de motors_taks
+    // con distintos parametros, enviar las velocidades desde linux y probar
+    // la estructura y el paso de mensajes
+    // probar con 2 valores uno bajo y otro alto
+    resume(create(motor_task, 128, 20, "motor1", 1, 1));
+    //resume(create(motor_task, 128, 20, "motor2", 1, 1));
     //resume(create(battery, 64, 20, "battery", 0));
     //resume(create(gyro_task, 192, 20, "gyro", 0));
 
@@ -437,36 +351,27 @@ void main(void)
     hodor_msg_t msg = MSG_INIT;
 
     while (1) {
-        /*if (hodor_msg_recv(&msg) == 0) {
-            op = MSG_OP(msg.head);
-            addr = MSG_ADDR(msg.head);
-            hodor_st_set((hodor_ad_t)addr, msg.body);
-
-            msg.head = MSG_HEAD(OP_ACK, (hodor_ad_t)addr);
-            hodor_msg_send(&msg);
-        }*/
-
         if (hodor_msg_recv(&msg) == 0) {
             op = MSG_OP(msg.head);
             addr = MSG_ADDR(msg.head);
             switch (op) {
-                case OP_READ:
-                    hodor_st_get((hodor_ad_t)addr, &value);
-                    msg.head = MSG_HEAD(OP_WRITE, (hodor_ad_t)addr);
-                    msg.body = value;
-                    hodor_msg_send(&msg);
-                    break;
-                case OP_WRITE:
-                    hodor_st_set((hodor_ad_t)addr, msg.body);
-                    msg.head = MSG_HEAD(OP_ACK, (hodor_ad_t)addr);
-                    hodor_msg_send(&msg);
-                    break;
-                case OP_ACK:
-                default:
-                    msg.head = MSG_HEAD(OP_ACK, (hodor_ad_t)addr);
-                    msg.body = 0xffff;
-                    hodor_msg_send(&msg);
-                    break;
+            case OP_READ:
+                hodor_st_get((hodor_ad_t)addr, &value);
+                msg.head = MSG_HEAD(OP_WRITE, (hodor_ad_t)addr);
+                msg.body = value;
+                hodor_msg_send(&msg);
+                break;
+            case OP_WRITE:
+                hodor_st_set((hodor_ad_t)addr, msg.body);
+                msg.head = MSG_HEAD(OP_ACK, (hodor_ad_t)addr);
+                hodor_msg_send(&msg);
+                break;
+            case OP_ACK:
+            default:
+                msg.head = MSG_HEAD(OP_ACK, (hodor_ad_t)addr);
+                msg.body = 0xffff;
+                hodor_msg_send(&msg);
+                break;
             }
         }
     }
