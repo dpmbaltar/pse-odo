@@ -38,6 +38,22 @@
 #define WHEEL_DIAM_MM 60L  /* Díametro de ruedas (mm) */
 #define WHEEL_BASE_MM 135L /* Distancia entre centros de las ruedas (mm) */
 
+/*
+ * Las ganancias están expresadas en Q8:
+ *
+ * Kp = valor / 256
+ *
+ * Valores iniciales (ajustar experimentalmente!)
+ */
+#define MOTOR_KP        256     /* 1.0 */
+#define MOTOR_KI        0       /* 0.0625 */
+#define MOTOR_KD        0       /* ??? */
+
+#define MOTOR_I_LIMIT   1000
+#define MOTOR_PID_LIMIT PWM_MAX
+#define PID_PERIOD_MS   20
+
+#define SPEED_DEADZONE  1
 #define DEADZONE      40   /* Zona muerta del motor (TT amarillo 6V) */
 #define RAMP_STEP     1    /* Pasos de aceleración del motor */
 #define RAMP_DELAY_MS 2    /* Uso en sleepms() de XINU para la tarea mot1 */
@@ -199,75 +215,105 @@ void motors_init()
     gpio_output(MOT2_B);
 }
 
-int16_t rotation_target = 90;
-
-void motors_task(void)
+void motor_task(void)
 {
-    int16_t target;
-    int16_t current;
-    int16_t control;
-
-    int16_t left_start;
-    int16_t right_start;
-
-    int16_t left;
-    int16_t right;
-
     pid_t pid;
 
-    pid_init(
-        &pid,
-        384,  /* Kp = 1.5 */
-        8,    /* Ki = 0.03125 */
-        128,  /* Kd = 0.5 */
-        1000,
-        100
-    );
+    int16_t target_speed;
+    int16_t current_speed;
 
-    hodor_st_get(LENC_STEPS, &left_start);
-    hodor_st_get(LENC_STEPS, &right_start);
-    target = angle_to_encoder_delta(rotation_target);
+    int16_t target_pwm;
+    int16_t current_encoder;
+    int16_t previous_encoder;
+
+    pid_init(&pid,
+             MOTOR_KP,
+             MOTOR_KI,
+             MOTOR_KD,
+             MOTOR_I_LIMIT,
+             MOTOR_PID_LIMIT);
+
+    cli();
+    previous_encoder = left_encoder_count;
+    sei();
+
+    set_direction(DIR_STOP);
+    timer1_set_pwm_A(0);
 
     while (1) {
-        hodor_st_get(LENC_STEPS, &left);
-        hodor_st_get(LENC_STEPS, &right);
-        left  -= left_start;
-        right -= right_start;
-        current = right - left;
+        /*
+         * ---------------------------------------------------------
+         * 1. Obtener velocidad objetivo
+         * ---------------------------------------------------------
+         *
+         * LMOTOR_TPWM ya no representa directamente un PWM.
+         * Representa pasos de encoder por período de control.
+         */
+        hodor_st_get(LMOTOR_TPWM, &target_speed);
+
+        cli();
+        current_encoder = left_encoder_count;
+        sei();
 
         /*
-         * PID sobre el error angular.
+         * Velocidad = incremento de posición desde la última muestra.
+         *
+         * La unidad es:
+         *
+         *     pasos / PID_PERIOD_MS
          */
-        control = pid_update(&pid, target, current);
+        current_speed = current_encoder - previous_encoder;
+        previous_encoder = current_encoder;
 
-        /*
-         * Giro diferencial.
-         */
-        if (rotation_target < 0) {
-            set_direction(DIR_ROTATE_LEFT);
-        } else if (rotation_target > 0) {
-            set_direction(DIR_ROTATE_RIGHT);
-        } else {
+        if (target_speed > -DEADZONE && target_speed < DEADZONE) {
+            target_speed = 0;
+
+            /*
+             * Evitar que el término integral quede acumulado mientras el motor
+             * está detenido.
+             */
+            pid.integral = 0;
+            pid.previous_error = 0;
+
+            current_speed = 0;
+            target_pwm = 0;
+
             set_direction(DIR_STOP);
-        }
-
-        if (abs(target - current) <= ROTATION_TOL) {
             timer1_set_pwm_A(0);
-            timer1_set_pwm_B(0);
-            hodor_st_set(LMOTOR_TPWM, 0);
-            hodor_st_set(RMOTOR_TPWM, 0);
         } else {
-            timer1_set_pwm_A(PWM_MIN - control);
-            timer1_set_pwm_B(PWM_MIN + control);
-            hodor_st_set(LMOTOR_TPWM, PWM_MIN - control);
-            hodor_st_set(RMOTOR_TPWM, PWM_MIN + control);
+            target_pwm = pid_update(
+                &pid,
+                target_speed,
+                current_speed
+            );
+
+            // Determinar dirección
+            if (target_pwm > 0) {
+                set_direction(DIR_ROTATE_LEFT);
+            } else if (target_pwm < 0) {
+                set_direction(DIR_ROTATE_RIGHT);
+                target_pwm = -target_pwm;
+            } else {
+                set_direction(DIR_STOP);
+            }
+
+            if (target_pwm > 0 && target_pwm < PWM_MIN) {
+                target_pwm = PWM_MIN;
+            }
+
+            if (target_pwm > PWM_MAX) {
+                target_pwm = PWM_MAX;
+            }
+
+            timer1_set_pwm_A((uint8_t)target_pwm);
         }
 
-        sleepms(20);
+        hodor_st_set(LMOTOR_PWM, target_pwm);
+        sleepms(PID_PERIOD_MS);
     }
 }
 
-void motor_task(void)
+void motor_task1(void)
 {
     int16_t target_pwm = 0;
     uint8_t current_pwm = 0;
