@@ -387,37 +387,41 @@ void main(void)
 
     uint8_t op;
     uint8_t addr;
+    int16_t value;
     hodor_msg_t msg = MSG_INIT;
 
     while (1) {
-        if (hodor_msg_recv(&msg) == 0) {
+        /*if (hodor_msg_recv(&msg) == 0) {
             op = MSG_OP(msg.head);
             addr = MSG_ADDR(msg.head);
             hodor_st_set((hodor_ad_t)addr, msg.body);
 
-            msg.head = MSG_HEAD(OP_ACK, addr);
+            msg.head = MSG_HEAD(OP_ACK, (hodor_ad_t)addr);
             hodor_msg_send(&msg);
-        }
+        }*/
 
-        /*if (hodor_msg_recv(&msg) == 0) {
+        if (hodor_msg_recv(&msg) == 0) {
             op = MSG_OP(msg.head);
+            addr = MSG_ADDR(msg.head);
             switch (op) {
                 case OP_READ:
-                    addr = MSG_ADDR(msg.head);
-                    hodor_st_get(addr, &val);
-                    msg.head = MSG_HEAD(OP_WRITE, addr);
-                    msg.body = val;
+                    hodor_st_get((hodor_ad_t)addr, &value);
+                    msg.head = MSG_HEAD(OP_WRITE, (hodor_ad_t)addr);
+                    msg.body = value;
                     hodor_msg_send(&msg);
                     break;
                 case OP_WRITE:
-                    addr = MSG_ADDR(msg.head);
-                    hodor_st_set(addr, msg.body);
-                    msg.head = MSG_HEAD(OP_ACK, addr);
+                    hodor_st_set((hodor_ad_t)addr, msg.body);
+                    msg.head = MSG_HEAD(OP_ACK, (hodor_ad_t)addr);
                     hodor_msg_send(&msg);
                     break;
+                case OP_ACK:
                 default:
+                    msg.head = MSG_HEAD(OP_ACK, (hodor_ad_t)addr);
+                    msg.body = 0xffff;
+                    hodor_msg_send(&msg);
                     break;
             }
-        }*/
+        }
     }
 }
