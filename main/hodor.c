@@ -52,13 +52,15 @@ void hodor_msg_send(hodor_msg_t *msg)
     }
 }
 
-void hodor_msg_recv(hodor_msg_t *msg)
+int hodor_msg_recv(hodor_msg_t *msg)
 {
-    msg->sof = serial_get_char();
+    /*msg->sof = serial_get_char();
     if (msg->sof != SOF_RECV) {
-        msg->head = 0;
-        return;
-    }
+        return -1;
+    }*/
+    do {
+        msg->sof = serial_get_char();
+    } while (msg->sof != SOF_RECV);
 
     size_t size = sizeof(hodor_msg_t);
     uint8_t *buffer = (uint8_t *)msg;
@@ -70,6 +72,8 @@ void hodor_msg_recv(hodor_msg_t *msg)
 
     uint8_t chks = checksum8((uint8_t *)msg, sizeof(hodor_msg_t) - 1);
     if (chks != msg->checksum) {
-        msg->head = 0;
+        return -1;
     }
+
+    return 0;
 }
