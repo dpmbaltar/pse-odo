@@ -267,44 +267,32 @@ void motors_task(void)
     }
 }
 
-void motors_task1(void)
+void motor_task(void)
 {
-    uint16_t adc_value;
-    int16_t error;
-    uint8_t target_pwm = 0;
+    int16_t target_pwm = 0;
     uint8_t current_pwm = 0;
     uint8_t target_dir = DIR_STOP;
     uint8_t current_dir = DIR_STOP;
-    uint32_t temp;
 
     while (1) {
-        adc_value = adc_read(ADC7);
-        error = (int16_t)adc_value - 512;
+        hodor_st_get(LMOTOR_TPWM, &target_pwm);
 
         /*
          * Zona muerta
          */
-        if (error > -DEADZONE && error < DEADZONE) {
+        if (target_pwm > -DEADZONE && target_pwm < DEADZONE) {
             target_pwm = 0;
             target_dir = DIR_STOP;
         } else {
             /*
              * Determinar dirección
              */
-            if (error > 0) {
+            if (target_pwm > 0) {
                 target_dir = DIR_ROTATE_LEFT;
             } else {
                 target_dir = DIR_ROTATE_RIGHT;
-                error = -error;
+                target_pwm = -target_pwm;
             }
-
-            /*
-             * Mapear:
-             * DEADZONE..511 -> PWM_MIN..255
-             */
-            temp = (uint32_t)(error - DEADZONE) * (PWM_MAX - PWM_MIN);
-            temp /= (511 - DEADZONE);
-            target_pwm = PWM_MIN + temp;
 
             if (target_pwm > PWM_MAX)
                 target_pwm = PWM_MAX;
@@ -320,7 +308,7 @@ void motors_task1(void)
             if (current_pwm > 0) {
                 current_pwm -= RAMP_STEP;
 
-                if (current_pwm > 255)
+                if (current_pwm > PWM_MAX)
                     current_pwm = 0;
             } else {
                 current_dir = target_dir;
@@ -382,55 +370,54 @@ void main(void)
     adc_init();
     serial_init();
     timer1_init();
-    twi_init();
-    mpu6050_init();
+    //twi_init();
+    //mpu6050_init();
     hodor_init();
     motors_init();
     encoders_init();
 
-    resume(create(motors_task, 128, 20, "motors", 0));
-    resume(create(encoders_task, 128, 20, "encoders", 0));
+    resume(create(motor_task, 128, 20, "motors", 1, 1));
+    //resume(create(encoders_task, 128, 20, "encoders", 0));
+    //Quitar la tarea encoder, y utilizar la misma tarea de motors_taks
+    //con distintos parametros, enviar las velocidades desde linux y probar
+    //la estructura y el paso de mensajes
+    //probar con 2 valores uno bajo y otro alto
     //resume(create(battery, 64, 20, "battery", 0));
-    resume(create(gyro_task, 192, 20, "gyro", 0));
+    //resume(create(gyro_task, 192, 20, "gyro", 0));
 
-    int16_t ltpwm, rtpwm;
-    int16_t lsteps, rsteps;
-    int16_t gyro_z;
-    /*
+    uint8_t op;
+    uint8_t addr;
     hodor_msg_t msg = MSG_INIT;
-    */
 
     while (1) {
-        hodor_st_get(LENC_STEPS, &lsteps);
-        hodor_st_get(RENC_STEPS, &rsteps);
-        hodor_st_get(LMOTOR_TPWM, &ltpwm);
-        hodor_st_get(RMOTOR_TPWM, &rtpwm);
-        hodor_st_get(GYRO_Z, &gyro_z);
+        if (hodor_msg_recv(&msg) == 0) {
+            op = MSG_OP(msg.head);
+            addr = MSG_ADDR(msg.head);
+            hodor_st_set((hodor_ad_t)addr, msg.body);
 
-        serial_put_str("LENC=");
-        serial_put_int(lsteps, 0);
-        serial_put_str("|RENC=");
-        serial_put_int(rsteps, 0);
-        serial_put_str("|LTPWM=");
-        serial_put_int(ltpwm, 0);
-        serial_put_str("|RTPWM=");
-        serial_put_int(rtpwm, 0);
-        serial_put_str("|GYRO_Z=");
-        serial_put_int(gyro_z, 0);
-        serial_put_str("\r\n");
+            msg.head = MSG_HEAD(OP_ACK, addr);
+            hodor_msg_send(&msg);
+        }
 
-        /*
-        hodor_st_get(LMOTOR_PWM, &lpwm);
-        msg.head = MSG_HEAD(OP_WRITE, LMOTOR_PWM);
-        msg.lmotor_pwm = lpwm;
-        hodor_msg_send(&msg);
-
-        hodor_st_get(RMOTOR_PWM, &rpwm);
-        msg.head = MSG_HEAD(OP_WRITE, RMOTOR_PWM);
-        msg.rmotor_pwm = rpwm;
-        hodor_msg_send(&msg);
-        */
-
-        sleepms(500);
+        /*if (hodor_msg_recv(&msg) == 0) {
+            op = MSG_OP(msg.head);
+            switch (op) {
+                case OP_READ:
+                    addr = MSG_ADDR(msg.head);
+                    hodor_st_get(addr, &val);
+                    msg.head = MSG_HEAD(OP_WRITE, addr);
+                    msg.body = val;
+                    hodor_msg_send(&msg);
+                    break;
+                case OP_WRITE:
+                    addr = MSG_ADDR(msg.head);
+                    hodor_st_set(addr, msg.body);
+                    msg.head = MSG_HEAD(OP_ACK, addr);
+                    hodor_msg_send(&msg);
+                    break;
+                default:
+                    break;
+            }
+        }*/
     }
 }
