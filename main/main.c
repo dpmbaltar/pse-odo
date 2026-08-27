@@ -33,30 +33,29 @@
  */
 #define PWM_MIN       70   /* PWM mínimo para el motor */
 #define PWM_MAX       255  /* PWM máximo (100%) */
+#define PWM_DEADZONE  50   /* Zona muerta del motor (TT amarillo 6V) */
+
 #define ROTATION_TOL  2    /* Tolerancia de rotación */
 #define ENCODER_CPR   600L /* Pasos por vuelta del encoder */
+
 #define WHEEL_DIAM_MM 60L  /* Díametro de ruedas (mm) */
 #define WHEEL_BASE_MM 135L /* Distancia entre centros de las ruedas (mm) */
 
-/*
+/*-----------------------------------------------------------------------
+ * Configuración PID
+ *-----------------------------------------------------------------------
  * Las ganancias están expresadas en Q8:
- *
- * Kp = valor / 256
- *
+ *     Kp = valor / 256
  * Valores iniciales (ajustar experimentalmente!)
  */
-#define MOTOR_KP        256     /* 1.0 */
-#define MOTOR_KI        0       /* 0.0625 */
-#define MOTOR_KD        0       /* ??? */
+#define PID_MOTOR_KP      256     /* 1.0 */
+#define PID_MOTOR_KI      0       /* 0.0625 */
+#define PID_MOTOR_KD      0       /* ??? */
 
-#define MOTOR_I_LIMIT   1000
-#define MOTOR_PID_LIMIT PWM_MAX
-#define PID_PERIOD_MS   20
+#define PID_MOTOR_I_LIMIT 1000
+#define PID_MOTOR_LIMIT   PWM_MAX
 
-#define SPEED_DEADZONE  1
-#define DEADZONE      40   /* Zona muerta del motor (TT amarillo 6V) */
-#define RAMP_STEP     1    /* Pasos de aceleración del motor */
-#define RAMP_DELAY_MS 2    /* Uso en sleepms() de XINU para la tarea mot1 */
+#define PID_PERIOD_MS     20      /* Período de control encoders (ms) */
 
 /*-----------------------------------------------------------------------
  * Direcciones del motor
@@ -211,11 +210,11 @@ void motor_task(void)
     int16_t previous_encoder;
 
     pid_init(&pid,
-             MOTOR_KP,
-             MOTOR_KI,
-             MOTOR_KD,
-             MOTOR_I_LIMIT,
-             MOTOR_PID_LIMIT);
+             PID_MOTOR_KP,
+             PID_MOTOR_KI,
+             PID_MOTOR_KD,
+             PID_MOTOR_I_LIMIT,
+             PID_MOTOR_LIMIT);
 
     cli();
     previous_encoder = left_encoder_count;
@@ -241,15 +240,13 @@ void motor_task(void)
 
         /*
          * Velocidad = incremento de posición desde la última muestra.
-         *
          * La unidad es:
-         *
          *     pasos / PID_PERIOD_MS
          */
         current_speed = current_encoder - previous_encoder;
         previous_encoder = current_encoder;
 
-        if (target_speed > -DEADZONE && target_speed < DEADZONE) {
+        if (target_speed > -PWM_DEADZONE && target_speed < PWM_DEADZONE) {
             target_speed = 0;
 
             /*
