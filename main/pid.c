@@ -30,7 +30,7 @@ int16_t pid_update(pid_t *pid,
     error = setpoint - feedback;
 
     /*
-     * Integral con anti-windup.
+     * Integral con anti-windup (no acumular de error al llegar al límite).
      */
     pid->integral += error;
     if (pid->integral > pid->integral_limit) {
